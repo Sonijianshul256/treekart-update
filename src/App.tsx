@@ -36,23 +36,38 @@ import MapComponent from './components/MapComponent';
 import { cn } from './lib/utils';
 
 // --- Assets ---
-const DUMMY_FARM = {
-  id: 'farm_01',
-  name: 'Kumbhalgarh Organic Range',
-  location: { lat: 25.1481, lng: 73.5873 },
-  boundary: [
-    { lat: 25.1500, lng: 73.5850 },
-    { lat: 25.1500, lng: 73.5900 },
-    { lat: 25.1450, lng: 73.5900 },
-    { lat: 25.1450, lng: 73.5850 },
-  ]
-};
+const DUMMY_FARMS = [
+  {
+    id: 'farm_01',
+    name: 'Kumbhalgarh Organic Range',
+    description: 'Our primary estate in the heart of Aravallis, specializing in high-yield organic Papayas and Mangoes.',
+    location: { lat: 25.1481, lng: 73.5873 },
+    boundary: [
+      { lat: 25.1500, lng: 73.5850 },
+      { lat: 25.1500, lng: 73.5900 },
+      { lat: 25.1450, lng: 73.5900 },
+      { lat: 25.1450, lng: 73.5850 },
+    ]
+  },
+  {
+    id: 'farm_02',
+    name: 'Aravalli Valley View',
+    description: 'High-altitude organic cultivation with mineral-rich soil, perfect for late-harvest Mangoes.',
+    location: { lat: 25.1440, lng: 73.5880 },
+    boundary: [
+      { lat: 25.1448, lng: 73.5875 },
+      { lat: 25.1448, lng: 73.5895 },
+      { lat: 25.1430, lng: 73.5895 },
+      { lat: 25.1430, lng: 73.5875 },
+    ]
+  }
+];
 
 const DUMMY_TREES: Tree[] = [
   { id: 'tree_101', type: 'Papaya', location: { lat: 25.1485, lng: 73.5870 }, status: 'available', price: 1500, plantedDate: '2025-01-15', growthStage: 45, health: 'Optimal' },
   { id: 'tree_102', type: 'Mango', location: { lat: 25.1480, lng: 73.5875 }, status: 'available', price: 2500, plantedDate: '2024-11-20', growthStage: 60, health: 'Optimal' },
   { id: 'tree_103', type: 'Papaya', location: { lat: 25.1490, lng: 73.5865 }, status: 'rented', price: 1500, plantedDate: '2025-02-10', growthStage: 30, health: 'Warning' },
-  { id: 'tree_201', type: 'Mango', location: { lat: 25.1475, lng: 73.5880 }, status: 'available', price: 3000, plantedDate: '2024-10-01', growthStage: 85, health: 'Optimal' },
+  { id: 'tree_201', type: 'Mango', location: { lat: 25.1440, lng: 73.5885 }, status: 'available', price: 3000, plantedDate: '2024-10-01', growthStage: 85, health: 'Optimal' },
 ];
 
 const STAGES = [
@@ -780,11 +795,17 @@ const TreeSelectorScreen = ({ onTreeSelect, onBack }: { onTreeSelect: (t: Tree) 
   const [typeFilter, setTypeFilter] = useState<'all' | 'Papaya' | 'Mango'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'rented'>('all');
   const [viewType, setViewType] = useState<'map' | 'list'>('map');
+  const [selectedFarm, setSelectedFarm] = useState<any | null>(null);
 
   const filteredTrees = DUMMY_TREES.filter(t => 
     (typeFilter === 'all' || t.type === typeFilter) &&
     (statusFilter === 'all' || t.status === statusFilter)
   );
+
+  const farmTrees = selectedFarm ? DUMMY_TREES.filter(t => {
+     const dist = Math.sqrt(Math.pow(t.location.lat - selectedFarm.location.lat, 2) + Math.pow(t.location.lng - selectedFarm.location.lng, 2));
+     return dist < 0.003; 
+  }) : [];
 
   return (
     <motion.div 
@@ -811,7 +832,7 @@ const TreeSelectorScreen = ({ onTreeSelect, onBack }: { onTreeSelect: (t: Tree) 
       </div>
 
       {/* Filters Bar */}
-      <div className="px-6 pb-6 pt-4 overflow-x-auto flex gap-4 no-scrollbar z-10 bg-sand/80 backdrop-blur-xl">
+      <div className="px-6 pb-6 pt-4 overflow-x-auto flex gap-4 no-scrollbar z-10 bg-sand/80 backdrop-blur-xl shrink-0">
         <div className="flex gap-2 pr-6 border-r border-treekart-green/10">
           {(['all', 'Papaya', 'Mango'] as const).map(t => (
             <button 
@@ -842,9 +863,15 @@ const TreeSelectorScreen = ({ onTreeSelect, onBack }: { onTreeSelect: (t: Tree) 
         </div>
       </div>
 
-      <div className="flex-1 relative">
+      <div className="flex-1 relative overflow-hidden">
         {viewType === 'map' ? (
-          <MapComponent trees={filteredTrees} farm={DUMMY_FARM} onTreeClick={onTreeSelect} />
+          <MapComponent 
+            trees={filteredTrees} 
+            farms={DUMMY_FARMS} 
+            onTreeClick={onTreeSelect} 
+            onFarmClick={setSelectedFarm}
+            selectedFarmId={selectedFarm?.id}
+          />
         ) : (
           <div className="px-6 space-y-6 pb-32 h-full overflow-y-auto">
             {filteredTrees.map(tree => (
@@ -882,19 +909,82 @@ const TreeSelectorScreen = ({ onTreeSelect, onBack }: { onTreeSelect: (t: Tree) 
           </div>
         )}
 
-        {/* Floating Search */}
-        <div className="absolute bottom-10 left-6 right-6 flex gap-4 pointer-events-none">
-          <div className="flex-1 h-18 glass rounded-[2rem] organic-shadow border border-white flex items-center px-8 gap-4 pointer-events-auto backdrop-blur-2xl">
-            <Search size={22} className="text-treekart-green/20" />
-            <input type="text" placeholder="Locate plot..." className="bg-transparent border-none outline-none text-base font-bold text-treekart-green placeholder:text-treekart-green/20 w-full" />
+        {/* Farm Detail Overlay */}
+        <AnimatePresence>
+          {selectedFarm && viewType === 'map' && (
+            <motion.div 
+              initial={{ y: 300, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 300, opacity: 0 }}
+              className="absolute bottom-0 left-0 right-0 p-6 z-20 pointer-events-none"
+            >
+              <div className="bg-white rounded-[2.5rem] organic-shadow border border-white p-8 pointer-events-auto max-h-[50vh] overflow-y-auto">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                       <div className="w-1.5 h-1.5 rounded-full bg-harvest-gold" />
+                       <span className="text-[10px] font-black text-harvest-gold uppercase tracking-[0.3em]">Estate Site</span>
+                    </div>
+                    <h3 className="font-serif text-3xl font-black text-treekart-green leading-none">{selectedFarm.name}</h3>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedFarm(null)}
+                    className="w-10 h-10 bg-sand rounded-xl flex items-center justify-center text-treekart-green/40"
+                  >
+                    <Plus className="rotate-45" size={20} />
+                  </button>
+                </div>
+
+                <p className="text-xs font-medium text-treekart-green/60 mb-8 leading-relaxed italic">
+                  {selectedFarm.description}
+                </p>
+
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-treekart-green/30 uppercase tracking-[0.2em]">Trees in this sector ({farmTrees.length})</h4>
+                  <div className="grid grid-cols-1 gap-3">
+                    {farmTrees.map(tree => (
+                      <div 
+                        key={tree.id} 
+                        onClick={() => onTreeSelect(tree)}
+                        className="flex items-center gap-4 p-4 rounded-2xl bg-sand/30 border border-white cursor-pointer hover:bg-sand/50 transition-all"
+                      >
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shadow-sm", tree.type === 'Mango' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600')}>
+                          <Leaf size={18} />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-black text-treekart-green italic">{tree.type} #{tree.id.split('_')[1]}</p>
+                          <div className="flex items-center gap-2">
+                            <span className="w-1 h-1 rounded-full bg-harvest-gold" />
+                            <p className="text-[8px] font-black text-treekart-green/40 uppercase tracking-widest">{tree.health} Vitality</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-serif font-black text-treekart-green">₹{tree.price}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Floating Search (only show if no farm selected or hide it) */}
+        {!selectedFarm && (
+          <div className="absolute bottom-10 left-6 right-6 flex gap-4 pointer-events-none">
+            <div className="flex-1 h-18 glass rounded-[2rem] organic-shadow border border-white flex items-center px-8 gap-4 pointer-events-auto backdrop-blur-2xl">
+              <Search size={22} className="text-treekart-green/20" />
+              <input type="text" placeholder="Locate plot..." className="bg-transparent border-none outline-none text-base font-bold text-treekart-green placeholder:text-treekart-green/20 w-full" />
+            </div>
+            <motion.button 
+              whileTap={{ scale: 0.9 }}
+              className="w-18 h-18 bg-harvest-gold rounded-[2rem] organic-shadow flex items-center justify-center text-treekart-green shadow-xl pointer-events-auto"
+            >
+              <RefreshCw size={26} onClick={() => {setTypeFilter('all'); setStatusFilter('all');}} />
+            </motion.button>
           </div>
-          <motion.button 
-            whileTap={{ scale: 0.9 }}
-            className="w-18 h-18 bg-harvest-gold rounded-[2rem] organic-shadow flex items-center justify-center text-treekart-green shadow-xl pointer-events-auto"
-          >
-            <RefreshCw size={26} onClick={() => {setTypeFilter('all'); setStatusFilter('all');}} />
-          </motion.button>
-        </div>
+        )}
       </div>
     </motion.div>
   );

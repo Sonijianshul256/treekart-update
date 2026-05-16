@@ -7,11 +7,13 @@ const API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
 
 interface MapViewProps {
   trees: Tree[];
-  farm?: any;
+  farms?: any[];
   deliveryLocation?: { lat: number; lng: number };
   destination?: { lat: number; lng: number };
   onTreeClick?: (tree: Tree) => void;
+  onFarmClick?: (farm: any) => void;
   userTree?: Tree;
+  selectedFarmId?: string | null;
 }
 
 export const Directions: React.FC<{ origin: { lat: number; lng: number }; destination: { lat: number; lng: number } }> = ({ origin, destination }) => {
@@ -79,7 +81,55 @@ export const TreeMarker: React.FC<{ tree: Tree; isUserTree?: boolean; onClick?: 
   );
 };
 
-const MapComponent: React.FC<MapViewProps> = ({ trees, farm, deliveryLocation, destination, onTreeClick, userTree }) => {
+const FarmPolygon: React.FC<{ 
+  farm: any; 
+  isSelected: boolean; 
+  onClick: (farm: any) => void 
+}> = ({ farm, isSelected, onClick }) => {
+  const map = useMap();
+  const polygonRef = useRef<google.maps.Polygon | null>(null);
+
+  useEffect(() => {
+    if (!map || polygonRef.current) return;
+
+    const polygon = new google.maps.Polygon({
+      paths: farm.boundary,
+      strokeColor: isSelected ? "#FFB302" : "#166534",
+      strokeOpacity: 0.8,
+      strokeWeight: isSelected ? 4 : 2,
+      fillColor: "#166534",
+      fillOpacity: isSelected ? 0.35 : 0.1,
+      map: map,
+    });
+
+    polygon.addListener('click', () => {
+      onClick(farm);
+    });
+
+    polygonRef.current = polygon;
+
+    return () => {
+      if (polygonRef.current) {
+        polygonRef.current.setMap(null);
+        polygonRef.current = null;
+      }
+    };
+  }, [map, farm, isSelected, onClick]);
+
+  useEffect(() => {
+    if (polygonRef.current) {
+      polygonRef.current.setOptions({
+        strokeColor: isSelected ? "#FFB302" : "#166534",
+        strokeWeight: isSelected ? 4 : 2,
+        fillOpacity: isSelected ? 0.35 : 0.1,
+      });
+    }
+  }, [isSelected]);
+
+  return null;
+};
+
+const MapComponent: React.FC<MapViewProps> = ({ trees, farms = [], deliveryLocation, destination, onTreeClick, onFarmClick, userTree, selectedFarmId }) => {
   if (!API_KEY) {
     return (
       <div className="flex flex-col items-center justify-center h-[300px] bg-gray-100 rounded-xl p-6 text-center">
@@ -90,16 +140,26 @@ const MapComponent: React.FC<MapViewProps> = ({ trees, farm, deliveryLocation, d
     );
   }
 
+  const defaultCenter = farms.length > 0 ? farms[0].location : { lat: 25.1481, lng: 73.5873 };
+
   return (
     <div className="w-full h-full rounded-xl overflow-hidden shadow-inner border border-gray-200">
       <APIProvider apiKey={API_KEY} version="weekly">
         <Map
-          defaultCenter={farm?.location || { lat: 25.1481, lng: 73.5873 }}
+          defaultCenter={defaultCenter}
           defaultZoom={17}
           mapId="TREKART_MAP_01"
           gestureHandling="greedy"
           disableDefaultUI
         >
+          {farms.map(farm => (
+            <FarmPolygon 
+              key={farm.id} 
+              farm={farm} 
+              isSelected={selectedFarmId === farm.id}
+              onClick={onFarmClick || (() => {})} 
+            />
+          ))}
           {trees.map(tree => (
             <TreeMarker 
               key={tree.id} 
@@ -109,7 +169,7 @@ const MapComponent: React.FC<MapViewProps> = ({ trees, farm, deliveryLocation, d
             />
           ))}
           {deliveryLocation && <DeliveryMarker position={deliveryLocation} />}
-          {farm && destination && <Directions origin={farm.location} destination={destination} />}
+          {farms.length > 0 && destination && <Directions origin={farms[0].location} destination={destination} />}
         </Map>
       </APIProvider>
     </div>
