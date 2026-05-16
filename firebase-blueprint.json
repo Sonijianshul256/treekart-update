@@ -2,102 +2,82 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "User profile with role and contact info",
+      "description": "App users including subscribers and staff",
       "type": "object",
       "properties": {
-        "uid": { "type": "string", "description": "Unique auth ID" },
-        "email": { "type": "string", "description": "Contact email" },
-        "name": { "type": "string", "description": "Full name" },
-        "role": { "type": "string", "enum": ["subscriber", "corporate_admin", "farm_manager", "admin"], "description": "Application permission group" },
-        "phoneNumber": { "type": "string", "description": "Mobile number for OTP" },
-        "companyId": { "type": "string", "description": "Optional B2B association" }
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["subscriber", "corporate_admin", "farm_manager", "admin"] },
+        "subscriptionId": { "type": "string" },
+        "photoURL": { "type": "string" }
       },
       "required": ["uid", "email", "role"]
     },
     "Tree": {
       "title": "Tree",
-      "description": "Individual fruit tree located in a farm",
+      "description": "A fruit tree asset",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "farmId": { "type": "string", "description": "Parent farm reference" },
-        "type": { "type": "string", "enum": ["papaya", "mango"] },
-        "location": { "type": "object", "description": "Geo-tagged coordinates" },
-        "status": { "type": "string", "enum": ["available", "rented", "harvesting"] },
-        "growthStage": { "type": "number", "description": "0-100 percentage" },
-        "lastPhotoUrl": { "type": "string" },
-        "lastMoisture": { "type": "number" },
-        "qrCode": { "type": "string", "description": "Physical tag identifier" }
+        "type": { "type": "string", "enum": ["Papaya", "Mango"] },
+        "location": { "type": "object" },
+        "status": { "type": "string", "enum": ["available", "rented", "retired"] },
+        "price": { "type": "number" },
+        "plantedDate": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string" },
+        "growthStage": { "type": "number" },
+        "health": { "type": "string" }
       },
-      "required": ["id", "farmId", "type", "location", "status"]
+      "required": ["id", "type", "location", "status"]
     },
     "Subscription": {
       "title": "Subscription",
-      "description": "Active rental agreement between one or more users and a tree",
+      "description": "Tree rental contract",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "userId": { "type": "string" },
         "treeId": { "type": "string" },
-        "userIds": { "type": "array", "description": "Owners of the subscription" },
-        "type": { "type": "string", "enum": ["individual", "shared", "corporate"] },
+        "type": { "type": "string", "enum": ["individual", "shared", "b2b"] },
         "startDate": { "type": "string", "format": "date-time" },
         "endDate": { "type": "string", "format": "date-time" },
-        "paymentStatus": { "type": "string", "enum": ["pending", "paid", "expired"] }
+        "amount": { "type": "number" },
+        "coOwnerEmail": { "type": "string" }
       },
-      "required": ["id", "treeId", "userIds", "type", "paymentStatus"]
+      "required": ["id", "userId", "treeId", "type"]
     },
-    "FarmLog": {
-      "title": "Farm Log",
-      "description": "Daily update record for a specific tree",
+    "Update": {
+      "title": "Update",
+      "description": "Daily tree status update",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "treeId": { "type": "string" },
-        "photoUrl": { "type": "string" },
-        "soilMoisture": { "type": "number" },
-        "activity": { "type": "string" },
+        "photoURL": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
         "location": { "type": "object" },
-        "managerId": { "type": "string" },
-        "blockchainHash": { "type": "string", "description": "Polygon transaction hash" }
+        "soilMoisture": { "type": "number" }
       },
-      "required": ["treeId", "photoUrl", "timestamp", "managerId"]
-    },
-    "Delivery": {
-      "title": "Delivery",
-      "description": "Real-time delivery tracking for harvested fruit",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "subscriptionId": { "type": "string" },
-        "status": { "type": "string", "enum": ["picked", "packed", "shipped", "delivered"] },
-        "driverName": { "type": "string" },
-        "driverPhone": { "type": "string" },
-        "location": { "type": "object", "description": "Current position of delivery vehicle" },
-        "eta": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["subscriptionId", "status", "updatedAt"]
-    },
-    "Farm": {
-      "title": "Farm",
-      "description": "Farm boundary and location info",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "boundary": { "type": "object", "description": "GeoJSON polygon" },
-        "location": { "type": "object", "description": "Center point" }
-      },
-      "required": ["id", "name", "boundary"]
+      "required": ["id", "treeId", "photoURL", "timestamp"]
     }
   },
   "firestore": {
-    "/users/{userId}": { "schema": "User", "description": "User profiles" },
-    "/trees/{treeId}": { "schema": "Tree", "description": "Inventory of trees" },
-    "/subscriptions/{subId}": { "schema": "Subscription", "description": "Active tree rentals" },
-    "/trees/{treeId}/logs/{logId}": { "schema": "FarmLog", "description": "Daily tree health updates" },
-    "/deliveries/{deliveryId}": { "schema": "Delivery", "description": "Real-time fruit delivery tracking" },
-    "/farms/{farmId}": { "schema": "Farm", "description": "Farm definitions" }
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/trees/{treeId}": {
+      "schema": "Tree",
+      "description": "Tree inventory"
+    },
+    "/subscriptions/{subId}": {
+      "schema": "Subscription",
+      "description": "Active contracts"
+    },
+    "/trees/{treeId}/updates/{updateId}": {
+      "schema": "Update",
+      "description": "Periodic tree tracking"
+    }
   }
 }

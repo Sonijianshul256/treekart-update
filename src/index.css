@@ -1,33 +1,53 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Playfair Display", serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-serif: "Playfair Display", serif;
+  
+  --color-harvest-gold: #FFB302;
+  --color-sand: #FBF9F4;
+  --color-desert-clay: #E2725B;
+  --color-treekart-green: #0D3B1E;
+  --color-sage: #9ABF9A;
 }
 
-:root {
-  background-color: #fcfbf7;
+@layer base {
+  body {
+    @apply bg-sand text-treekart-green font-sans overflow-x-hidden antialiased;
+  }
 }
 
-body {
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color: #1a2e1a;
+.texture-overlay {
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 9999;
 }
 
-/* Glassmorphism utility */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  @apply bg-white/70 backdrop-blur-md border border-white/20;
 }
 
-/* Custom scrollbar */
+.organic-shadow {
+  box-shadow: 0 10px 30px -10px rgba(26, 77, 46, 0.15);
+}
+
+.mobile-container {
+  @apply max-w-md mx-auto min-h-screen bg-sand relative shadow-2xl;
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  width: 4px;
 }
-
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(26, 77, 46, 0.1);
+  border-radius: 10px;
+}

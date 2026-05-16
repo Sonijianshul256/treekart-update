@@ -16,24 +16,23 @@ service cloud.firestore {
     function existing() { return resource.data; }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
 
-    // 1. User Profiles
+    // 1. User Rules
     match /users/{userId} {
       function isValidUser(data) {
         return data.keys().hasAll(['uid', 'email', 'role']) &&
-               data.keys().size() <= 8 &&
+               data.keys().size() <= 6 &&
                data.uid == request.auth.uid &&
                data.email is string && data.email.size() <= 100 &&
                data.role in ['subscriber', 'corporate_admin', 'farm_manager', 'admin'];
       }
       
-      // Strict PII Isolation
-      allow get: if isOwner(userId) || isAdmin() || isManager();
+      allow get: if isSignedIn();
       allow create: if isSignedIn() && isValidUser(incoming()) && userId == request.auth.uid;
       allow update: if isOwner(userId) && isValidUser(incoming()) && 
                     incoming().diff(existing()).affectedKeys().hasOnly(['name', 'photoURL', 'subscriptionId']);
     }
 
-    // 2. Tree Inventory
+    // 2. Tree Rules
     match /trees/{treeId} {
       function isValidTree(data) {
         return data.keys().hasAll(['id', 'type', 'location', 'status']) &&
@@ -43,16 +42,11 @@ service cloud.firestore {
                data.location.lat is number && data.location.lng is number;
       }
 
-      // Public inventory access
       allow list, get: if isSignedIn();
       allow create: if isManager() || isAdmin();
-      
-      // Action: Rent Tree
       allow update: if (isManager() || isAdmin()) || 
-                    (isSignedIn() && 
-                    incoming().diff(existing()).affectedKeys().hasOnly(['ownerId', 'status']) && 
-                    incoming().status == 'rented' && existing().status == 'available' &&
-                    incoming().ownerId == request.auth.uid);
+                    (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['ownerId', 'status']) && 
+                    incoming().status == 'rented' && existing().status == 'available');
       
       // Updates subcollection
       match /updates/{updateId} {
@@ -61,24 +55,20 @@ service cloud.firestore {
       }
     }
 
-    // 3. Subscription Contracts
+    // 3. Subscription Rules
     match /subscriptions/{subId} {
       function isValidSub(data) {
         return data.keys().hasAll(['id', 'userId', 'treeId', 'type']) &&
                data.userId == request.auth.uid &&
-               data.id is string && data.id.size() <= 64 &&
                data.treeId is string &&
                data.type in ['individual', 'shared', 'b2b'];
       }
 
       allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || 
                   resource.data.coOwnerEmail == request.auth.token.email);
-      
-      // Pillar 7: Atomicity Guarantee
       allow create: if isSignedIn() && isValidSub(incoming()) && 
                     existsAfter(/databases/$(database)/documents/trees/$(incoming().treeId)) &&
-                    getAfter(/databases/$(database)/documents/trees/$(incoming().treeId)).data.status == 'rented' &&
-                    getAfter(/databases/$(database)/documents/trees/$(incoming().treeId)).data.ownerId == request.auth.uid;
+                    getAfter(/databases/$(database)/documents/trees/$(incoming().treeId)).data.status == 'rented';
     }
 
     // 4. Admin Bootstrap
