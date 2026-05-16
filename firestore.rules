@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    
+    // User Rules
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.uid == request.auth.uid &&
+               data.email is string &&
+               data.role in ['subscriber', 'corporate_admin', 'farm_manager', 'admin'];
+      }
+      
+      allow get: if isOwner(userId);
+      allow create: if isSignedIn() && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().role == existing().role; // Cannot change own role
+    }
+
+    // Farm Rules
+    match /farms/{farmId} {
+      allow read: if isSignedIn(); // Viewable by all users to browse
+      allow write: if false; // Admin only (not implemented in this draft)
+    }
+
+    // Tree Rules
+    match /trees/{treeId} {
+      function isValidTree(data) {
+        return data.id is string && data.farmId is string &&
+               data.type in ['papaya', 'mango'] &&
+               data.status in ['available', 'rented', 'harvesting'];
+      }
+
+      allow read: if isSignedIn();
+      allow update: if isSignedIn() && (
+        // Farm manager updating growth/stats
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'farm_manager') ||
+        // System updates (renting)
+        (incoming().status == 'rented' && existing().status == 'available')
+      );
+    }
+
+    // Logs
+    match /trees/{treeId}/logs/{logId} {
+      allow read: if isSignedIn(); 
+      allow create: if isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'farm_manager';
+    }
+
+    // Subscriptions
+    match /subscriptions/{subId} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.userIds;
+      allow create: if isSignedIn() && request.auth.uid in incoming().userIds;
+    }
+
+    // Deliveries
+    match /deliveries/{deliveryId} {
+      allow read: if isSignedIn(); // Simplified for MVP
+      allow update: if isSignedIn(); // Simplified for MVP
+    }
+  }
+}

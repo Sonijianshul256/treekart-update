@@ -1,0 +1,9 @@
+{
+  "name": "Treekart",
+  "description": "A cross-platform mobile app for renting organic fruit trees in Rajasthan with live GPS tracking, farm boundaries, and delivery tracking.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
