@@ -60,6 +60,29 @@
         "soilMoisture": { "type": "number" }
       },
       "required": ["id", "treeId", "photoURL", "timestamp"]
+    },
+    "SystemUpdate": {
+      "title": "System Update",
+      "description": "In-app notification or system message",
+      "type": "object",
+      "properties": {
+        "recipientId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["recipientId", "title", "body"]
+    },
+    "FCMToken": {
+      "title": "FCM Token",
+      "description": "Push notification token for a user",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["token", "updatedAt"]
     }
   },
   "firestore": {
@@ -78,6 +101,14 @@
     "/trees/{treeId}/updates/{updateId}": {
       "schema": "Update",
       "description": "Periodic tree tracking"
+    },
+    "/system_updates/{updateId}": {
+      "schema": "SystemUpdate",
+      "description": "User-specific notifications"
+    },
+    "/fcm_tokens/{userId}": {
+      "schema": "FCMToken",
+      "description": "Push notification mappings"
     }
   }
 }

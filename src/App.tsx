@@ -27,7 +27,7 @@ import {
   IndianRupee,
   Smartphone
 } from 'lucide-react';
-import { auth, db, googleProvider, messaging } from './lib/firebase';
+import { auth, db, googleProvider, messaging, handleFirestoreError, OperationType } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, getDocs, where, onSnapshot } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
@@ -56,12 +56,11 @@ const DUMMY_TREES: Tree[] = [
 ];
 
 const STAGES = [
-  { label: 'Seedling', icon: SeedlingIcon, color: 'bg-green-200' },
-  { label: 'Sapling', icon: Leaf, color: 'bg-green-400' },
-  { label: 'Growing', icon: TrendingUp, color: 'bg-green-600' },
-  { label: 'Flowering', icon: FlowerIcon, color: 'bg-yellow-400' },
-  { label: 'Fruiting', icon: AppleIcon, color: 'bg-red-400' },
-  { label: 'Harvest', icon: CheckCircle2, color: 'bg-orange-500' },
+  { label: 'Estate Sapling', threshold: 0, icon: Leaf, description: 'Estate sapling positioned in Aravalli soil.' },
+  { label: 'First Flowering', threshold: 30, icon: FlowerIcon, description: 'First organic blooms detected by farm mangers.' },
+  { label: 'First Fruit', threshold: 50, icon: AppleIcon, description: 'Organic fruit sets are appearing on branches.' },
+  { label: 'Maturation', threshold: 75, icon: TrendingUp, description: 'Fruit reaching peak nutrient density.' },
+  { label: 'Harvest Ready', threshold: 95, icon: CheckCircle2, description: 'Peak organic ripeness achieved.' },
 ];
 
 function SeedlingIcon(props: any) { return <Leaf {...props} className={cn(props.className, 'rotate-180')} />; }
@@ -199,10 +198,15 @@ export default function App() {
           if (permission === 'granted') {
             const token = await getToken(messaging, { vapidKey: 'YOUR_VAPID_KEY_IF_NEEDED' });
             if (token) {
-              await setDoc(doc(db, 'fcm_tokens', user.uid), {
-                token,
-                updatedAt: new Date().toISOString()
-              });
+              const path = `fcm_tokens/${user.uid}`;
+              try {
+                await setDoc(doc(db, 'fcm_tokens', user.uid), {
+                  token,
+                  updatedAt: new Date().toISOString()
+                });
+              } catch (error) {
+                handleFirestoreError(error, OperationType.WRITE, path);
+              }
             }
           }
         } catch (error) {
@@ -230,7 +234,8 @@ export default function App() {
     // Listen for events that would trigger notifications in a real app
     // For demo purposes, we simulate delivery/health updates via Firestore listeners
     if (user && db) {
-      const q = query(collection(db, 'system_updates'), where('recipientId', '==', user.uid));
+      const path = 'system_updates';
+      const q = query(collection(db, path), where('recipientId', '==', user.uid));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         snapshot.docChanges().forEach((change) => {
           if (change.type === "added") {
@@ -242,6 +247,8 @@ export default function App() {
             }, ...prev]);
           }
         });
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
       });
       return () => unsubscribe();
     }
@@ -251,9 +258,15 @@ export default function App() {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const userRef = doc(db, 'users', result.user.uid);
-      const userSnap = await getDoc(userRef);
+      const path = `users/${result.user.uid}`;
+      let userSnap;
+      try {
+        userSnap = await getDoc(userRef);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, path);
+      }
 
-      if (userSnap.exists()) {
+      if (userSnap?.exists()) {
         setUser(userSnap.data() as AppUser);
         setView('home');
       } else {
@@ -265,7 +278,11 @@ export default function App() {
           role: 'subscriber', // Default role
           photoURL: result.user.photoURL || ''
         };
-        await setDoc(userRef, newUser);
+        try {
+          await setDoc(userRef, newUser);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, path);
+        }
         setUser(newUser);
         setView('role_select');
       }
@@ -310,8 +327,13 @@ export default function App() {
         {view === 'role_select' && <RoleSelectScreen onSelect={(role) => {
           if (user) {
             const updatedUser = { ...user, role };
+            const path = `users/${user.uid}`;
+            try {
+              setDoc(doc(db, 'users', user.uid), updatedUser);
+            } catch (error) {
+              handleFirestoreError(error, OperationType.WRITE, path);
+            }
             setUser(updatedUser);
-            setDoc(doc(db, 'users', user.uid), updatedUser);
             setView('home');
           }
         }} />}
@@ -878,6 +900,62 @@ const TreeSelectorScreen = ({ onTreeSelect, onBack }: { onTreeSelect: (t: Tree) 
   );
 };
 
+const MilestoneTimeline = ({ growthStage }: { growthStage: number }) => (
+  <Card className="p-8 border-none bg-white organic-shadow">
+    <div className="flex justify-between items-baseline mb-8">
+      <h3 className="font-serif text-2xl font-black italic text-treekart-green">Life Journey</h3>
+      <div className="flex items-center gap-2">
+        <div className="w-1.5 h-1.5 rounded-full bg-harvest-gold animate-pulse" />
+        <span className="text-[10px] font-black text-treekart-green/40 uppercase tracking-widest">{growthStage}% Maturity</span>
+      </div>
+    </div>
+    
+    <div className="space-y-10 relative before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-0.5 before:bg-sand">
+      {STAGES.map((s, i) => {
+        const isCompleted = growthStage >= s.threshold;
+        const isNext = !isCompleted && (i === 0 || growthStage >= STAGES[i-1].threshold);
+        
+        return (
+          <motion.div 
+            key={i} 
+            initial={{ opacity: 0, x: -10 }} 
+            whileInView={{ opacity: 1, x: 0 }} 
+            viewport={{ once: true }}
+            transition={{ delay: i * 0.1 }}
+            className={cn(
+              "flex gap-6 items-start relative z-10 transition-all",
+              !isCompleted && !isNext ? "opacity-20 grayscale" : "opacity-100"
+            )}
+          >
+            <div className={cn(
+              "w-10 h-10 rounded-[1.2rem] flex items-center justify-center border-2 transition-all duration-500 organic-shadow",
+              isCompleted ? "bg-treekart-green border-treekart-green text-white" : 
+              isNext ? "bg-white border-harvest-gold text-harvest-gold scale-110 shadow-xl shadow-orange-500/20" : 
+              "bg-sand border-white text-treekart-green/30"
+            )}>
+              <s.icon size={20} strokeWidth={2.5} />
+            </div>
+            <div className="flex-1 pt-1">
+              <div className="flex items-center gap-2">
+                <h4 className={cn(
+                  "font-black text-[11px] uppercase tracking-widest", 
+                  isCompleted ? "text-treekart-green" : isNext ? "text-harvest-gold" : "text-treekart-green/20"
+                )}>
+                  {s.label}
+                </h4>
+                {isCompleted && <CheckCircle2 size={12} className="text-harvest-gold" />}
+              </div>
+              { (isCompleted || isNext) && (
+                <p className="text-[10px] font-medium text-treekart-green/50 mt-1 leading-relaxed pr-6">{s.description}</p>
+              )}
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  </Card>
+);
+
 const TreeDashboard = ({ tree, onBack }: { tree: Tree; onBack: () => void }) => {
   const [subModel, setSubModel] = useState<'individual' | 'shared' | 'b2b'>('individual');
   const [showConfirm, setShowConfirm] = useState(false);
@@ -934,21 +1012,7 @@ const TreeDashboard = ({ tree, onBack }: { tree: Tree; onBack: () => void }) => 
       </div>
 
       <div className="px-8 pt-10 space-y-12 pb-32">
-        <div className="space-y-6">
-          <div className="flex justify-between items-baseline mb-2">
-            <h3 className="font-serif text-2xl font-black italic text-treekart-green">Life Journey</h3>
-            <span className="text-[10px] font-black text-treekart-green/40 uppercase tracking-widest">{tree.growthStage}% Progress</span>
-          </div>
-          <div className="h-1.5 bg-treekart-green/5 rounded-full relative overflow-visible flex justify-between">
-            <motion.div initial={{ width: 0 }} animate={{ width: `${tree.growthStage}%` }} className="absolute inset-0 h-full bg-treekart-green rounded-full shadow-[0_0_15px_rgba(26,77,46,0.2)]" />
-            {STAGES.map((s, i) => (
-              <div key={i} className="relative flex flex-col items-center">
-                <div className={cn("w-4 h-4 rounded-full border-4 transition-all mt-[-5px] relative z-10", i * 20 <= tree.growthStage ? "bg-white border-treekart-green" : "bg-white border-treekart-green/5")} />
-                <span className={cn("text-[8px] font-black uppercase tracking-widest mt-3 transition-colors", i * 20 <= tree.growthStage ? "text-treekart-green" : "text-treekart-green/10")}>{s.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <MilestoneTimeline growthStage={tree.growthStage} />
 
         <div className="grid grid-cols-2 gap-4">
           <Card className="flex flex-col gap-6 p-8 border-none relative overflow-hidden group">
@@ -1109,6 +1173,9 @@ const SubscriptionsScreen = ({ user, onBack, onTreeSelect }: { user: AppUser; on
           <div className="space-y-6">
             {activeSubs.map(sub => {
               const tree = DUMMY_TREES.find(t => t.id === sub.treeId) || DUMMY_TREES[0];
+              const latestMilestone = [...STAGES].reverse().find(s => tree.growthStage >= s.threshold) || STAGES[0];
+              const daysSincePlanting = tree.plantedDate ? Math.floor((new Date().getTime() - new Date(tree.plantedDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+              
               return (
                 <Card key={sub.id} className="p-8 relative overflow-hidden group border-none bg-white">
                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -1122,10 +1189,10 @@ const SubscriptionsScreen = ({ user, onBack, onTreeSelect }: { user: AppUser; on
                       <div className="flex justify-between items-start">
                         <div>
                           <h4 className="font-serif text-2xl font-black text-treekart-green tracking-tight">{tree.type} <span className="text-harvest-gold font-normal">#{tree.id.split('_')[1]}</span></h4>
-                          <div className="flex items-center gap-4 mt-1">
+                          <div className="flex flex-wrap items-center gap-3 mt-1.5">
                             <div className="flex items-center gap-2">
                               <span className="w-1.5 h-1.5 rounded-full bg-treekart-green/20" />
-                              <p className="text-[10px] font-black text-treekart-green/40 uppercase tracking-widest">{sub.type} Plan</p>
+                              <p className="text-[9px] font-black text-treekart-green/40 uppercase tracking-widest">{sub.type} Plan</p>
                             </div>
                             <div className={cn("flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-widest", getHealthInfo(tree.health).border, getHealthInfo(tree.health).bg, getHealthInfo(tree.health).color)}>
                               <div className={cn("w-1 h-1 rounded-full", tree.health === 'Optimal' ? 'bg-treekart-green' : tree.health === 'Warning' ? 'bg-harvest-gold' : 'bg-desert-clay')} />
@@ -1140,13 +1207,30 @@ const SubscriptionsScreen = ({ user, onBack, onTreeSelect }: { user: AppUser; on
                       </div>
                     </div>
                   </div>
+
+                  <div className="mt-8 grid grid-cols-2 gap-4">
+                    <div className="p-4 rounded-2xl bg-sand/50 border border-white">
+                      <div className="flex items-center gap-2 mb-2">
+                        <TrendingUp size={14} className="text-treekart-green/30" />
+                        <span className="text-[8px] font-black text-treekart-green/40 uppercase tracking-widest">Latest Milestone</span>
+                      </div>
+                      <p className="text-xs font-black text-treekart-green uppercase tracking-tight truncate">{latestMilestone.label}</p>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-sand/50 border border-white">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Calendar size={14} className="text-treekart-green/30" />
+                        <span className="text-[8px] font-black text-treekart-green/40 uppercase tracking-widest">Season Progress</span>
+                      </div>
+                      <p className="text-xs font-black text-treekart-green uppercase tracking-tight">{daysSincePlanting} Days Live</p>
+                    </div>
+                  </div>
                   
-                  <div className="mt-8 pt-8 border-t border-treekart-green/5 flex justify-between items-center">
+                  <div className="mt-6 pt-6 border-t border-treekart-green/5 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-sand flex items-center justify-center">
-                        <Calendar size={14} className="text-treekart-green/40" />
+                        <Clock size={14} className="text-treekart-green/40" />
                       </div>
-                      <span className="text-[10px] font-black text-treekart-green/40 uppercase tracking-widest">Renews in 245 Days</span>
+                      <span className="text-[9px] font-black text-treekart-green/30 uppercase tracking-widest">Update 2h ago</span>
                     </div>
                     <button 
                       onClick={() => onTreeSelect(tree)}

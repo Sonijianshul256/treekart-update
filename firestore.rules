@@ -85,5 +85,28 @@ service cloud.firestore {
     match /admins/{adminId} {
       allow read: if isSignedIn();
     }
+
+    // 5. Notifications & Messaging
+    match /system_updates/{updateId} {
+      function isValidSystemUpdate(data) {
+        return data.keys().hasAll(['recipientId', 'title', 'body']) &&
+               data.recipientId is string &&
+               data.title is string && data.title.size() <= 200 &&
+               data.body is string && data.body.size() <= 1000;
+      }
+      allow list: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+      allow create: if isAdmin() || isManager();
+    }
+
+    match /fcm_tokens/{userId} {
+      function isValidFCMToken(data) {
+        return data.keys().hasAll(['token', 'updatedAt']) &&
+               data.token is string && data.token.size() <= 512 &&
+               data.updatedAt is string;
+      }
+      allow get: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidFCMToken(incoming());
+    }
   }
 }
